@@ -1,6 +1,6 @@
 #!/bin/bash
 
-DNSALLOW_DIR_LIB="/var/lib/dnsallow"
+DNSALLOW_DIR_LIB="/var/lib/dyndnsexception"
 
 if [ ! -d "$DNSALLOW_DIR_LIB" ]; then
   mkdir -p "$DNSALLOW_DIR_LIB"
