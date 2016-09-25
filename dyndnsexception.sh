@@ -70,10 +70,10 @@ function update {
 
 function help_message {
   echo "Usage:"
-  echo "  dnsallow add example.com"
-  echo "  dnsallow del example.com"
-  echo "  dnsallow list"
-  echo "  dnsallow help"
+  echo "  dyndnsexception add example.com"
+  echo "  dyndnsexception del example.com"
+  echo "  dyndnsexception list"
+  echo "  dyndnsexception help"
 }
 
 if [ -z "$*" ]; then
