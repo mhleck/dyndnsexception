@@ -1,10 +1,10 @@
 #!/bin/bash
 
 LIBDIR="/var/lib/dyndnsexception"
-VERBOSE=1
+DEBUG=0
 
-function echo_verbose {
-  if [ "$VERBOSE" -eq 1 ]; then
+function echo_debug {
+  if [ "$DEBUG" -eq 1 ]; then
     echo "$1"
   fi
 }
@@ -14,53 +14,89 @@ if [ ! -d "$LIBDIR" ]; then
   if [ ! -d "$LIBDIR" ]; then
     my_log "Error creating lib directory."
     exit 1
+  else
+    chmod -R 0700 /var/lib/dyndnsexception
   fi
 fi
 
 function getip {
-  IP=$(host "$1" | grep -iE "[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+" |cut -f4 -d' '|head -n 1)
+  IP=$(host "$1" | grep -iE "[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+" | cut -f4 -d' '| head -n 1)
   echo $IP
 }
 
 function add_entry {
-  echo "Adding entry for $1..."
-  touch "$LIBDIR/$1"
-  getip $1 > "$LIBDIR/$1"
+  IP=`getip "$1"`
+  if [ -z $IP ]; then
+    echo_debug "Skipping $1, error resolving IP for hostname."
+  else
+    echo_debug "Adding entry for $1 ($IP)."
+    touch "$LIBDIR/$1"
+    echo "$IP" > "$LIBDIR/$1"
+    ufw_add "$IP"
+  fi
 }
 
 function del_entry {
-  echo "Removing entry for $1..."
+  IP=`cat "$LIBDIR/$1"`
+  echo_debug "Removing entry for $1 ($IP)."
   rm -rf "$LIBDIR/$1"
+  ufw_del "$IP"
 }
 
 function ufw_exist {
-  echo_verbose "Checking if $1 exists in UFW"
-  return `ufw status | grep "$1" | grep Anywhere | wc -l`
+  #echo_debug "Checking if $1 exists in UFW"
+  status=`ufw status | grep "$1" | grep Anywhere | wc -l`
+  if [ $status -gt 0 ]; then
+    echo "true"
+  else
+    echo "false"
+  fi
 }
 
 function ufw_add {
- if ufw_exist $1 ; then
-   echo_verbose "Adding $1 to UFW"
-   ufw allow from "$1"
- fi
+  UFWRULEEXISTS=`ufw_exist "$1"`
+  if [ "$UFWRULEEXISTS" != "true" ] ; then
+    echo_debug "Adding $1 to UFW"
+    ufw allow from "$1"
+  fi
+}
+
+function ufw_double_check {
+  declare -A hosts
+  for file in `ls "$LIBDIR/"`; do
+    hosts["$file"]=`cat "$LIBDIR/$file"`
+  done
+  RETURNVALUE="false"
+  for host in "${!hosts[@]}"; do
+    if [ "$1" == "${hosts[$host]}" ]; then
+      RETURNVALUE="true"
+    fi
+  done
+  echo "$RETURNVALUE"
 }
 
 function ufw_del {
- if ufw_exist $1 ; then
-   echo_verbose "Deleting $1 from UFW"
-   ufw delete allow from "$1"
- fi
+  UFWDOUBLE=`ufw_double_check "$1"`
+  if [ "$UFWDOUBLE" == "true" ]; then
+    echo_debug "Not removing $1 from UFW, another entry shares the same IP."
+  else
+    UFWRULEEXISTS=`ufw_exist "$1"`
+    if [ "$UFWRULEEXISTS" == "true" ] ; then
+      echo_debug "Deleting $1 from UFW"
+      ufw delete allow from "$1"
+    fi
+  fi
 }
 
 function update {
-  echo_verbose "Updating all the things!"
+  echo_debug "Updating all the things!"
   declare -A hosts
   for file in `ls "$LIBDIR/"`; do
     hosts["$file"]=`cat "$LIBDIR/$file"`
   done
   for host in "${!hosts[@]}"; do
-    echo_verbose $host --- ${hosts[$host]};
-    newip=`getip $host`
+    echo_debug $host --- ${hosts[$host]};
+    newip=`getip "$host"`
     if [ "${hosts[$host]}" != "$newip" ]; then
       ufw_del ${hosts[$host]}
     fi
