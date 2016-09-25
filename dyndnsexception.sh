@@ -1,11 +1,18 @@
 #!/bin/bash
 
-DNSALLOW_DIR_LIB="/var/lib/dyndnsexception"
+LIBDIR="/var/lib/dyndnsexception"
+VERBOSE=1
 
-if [ ! -d "$DNSALLOW_DIR_LIB" ]; then
-  mkdir -p "$DNSALLOW_DIR_LIB"
-  if [ ! -d "$DNSALLOW_DIR_LIB" ]; then
-    echo "Error creating lib directory."
+function echo_verbose {
+  if [ "$VERBOSE" -eq 1 ]; then
+    echo "$1"
+  fi
+}
+
+if [ ! -d "$LIBDIR" ]; then
+  mkdir -p "$LIBDIR"
+  if [ ! -d "$LIBDIR" ]; then
+    my_log "Error creating lib directory."
     exit 1
   fi
 fi
@@ -17,30 +24,56 @@ function getip {
 
 function add_entry {
   echo "Adding entry for $1..."
-  touch "$DNSALLOW_DIR_LIB/$1"
-  getip $1 > "$DNSALLOW_DIR_LIB/$1"
+  touch "$LIBDIR/$1"
+  getip $1 > "$LIBDIR/$1"
 }
 
 function del_entry {
   echo "Removing entry for $1..."
-  rm -rf "$DNSALLOW_DIR_LIB/$1"
+  rm -rf "$LIBDIR/$1"
+}
+
+function ufw_exist {
+  echo_verbose "Checking if $1 exists in UFW"
+  return `ufw status | grep "$1" | grep Anywhere | wc -l`
+}
+
+function ufw_add {
+ if ufw_exist $1 ; then
+   echo_verbose "Adding $1 to UFW"
+   ufw allow from "$1"
+ fi
+}
+
+function ufw_del {
+ if ufw_exist $1 ; then
+   echo_verbose "Deleting $1 from UFW"
+   ufw delete allow from "$1"
+ fi
 }
 
 function update {
-  echo "Updating all the things!"
+  echo_verbose "Updating all the things!"
   declare -A hosts
-  for file in `ls "$DNSALLOW_DIR_LIB/"`; do
-    hosts["$file"]=`cat "$DNSALLOW_DIR_LIB/$file"`
+  for file in `ls "$LIBDIR/"`; do
+    hosts["$file"]=`cat "$LIBDIR/$file"`
   done
-  for host in "${!hosts[@]}"; do echo $host --- ${hosts[$host]}; done
+  for host in "${!hosts[@]}"; do
+    echo_verbose $host --- ${hosts[$host]};
+    newip=`getip $host`
+    if [ "${hosts[$host]}" != "$newip" ]; then
+      ufw_del ${hosts[$host]}
+    fi
+    ufw_add $newip
+  done
 }
 
 function help_message {
   echo "Usage:"
-  echo "  dyndnsexception add example.com"
-  echo "  dyndnsexception del example.com"
-  echo "  dyndnsexception list"
-  echo "  dyndnsexception help"
+  echo "  dnsallow add example.com"
+  echo "  dnsallow del example.com"
+  echo "  dnsallow list"
+  echo "  dnsallow help"
 }
 
 if [ -z "$*" ]; then
